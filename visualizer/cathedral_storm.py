@@ -123,14 +123,19 @@ class Puddle:
 # Main Visualizer
 # ---------------------------------------------------------------------------
 class CathedralStormVisualizer:
+    # Full render resolution (written to video)
     W, H = 1920, 1080
+    # Preview window size (what the user sees on screen)
+    PW, PH = 1280, 720
 
     def __init__(self, analyzer, logo_path: str):
         pygame.init()
-        self.screen = pygame.display.set_mode(
-            (self.W, self.H), pygame.NOFRAME
-        )
-        pygame.display.set_caption("Cathedral in the Storm — AVizualizer")
+        # Windowed preview display — normal window with title bar
+        self.screen = pygame.display.set_mode((self.PW, self.PH))
+        pygame.display.set_caption("Cathedral in the Storm — AVizualizer  [Preview]")
+
+        # Full-resolution offscreen canvas — this is what gets recorded
+        self.canvas = pygame.Surface((self.W, self.H))
 
         self.analyzer   = analyzer
         self.clock      = pygame.time.Clock()
@@ -162,6 +167,9 @@ class CathedralStormVisualizer:
         # Load & pre-process logo
         self._load_logo(logo_path)
 
+        # Load image assets
+        self._load_assets()
+
         # Pre-build cathedral silhouette surface
         self.cathedral_surf = self._build_cathedral()
 
@@ -170,7 +178,7 @@ class CathedralStormVisualizer:
         self.font_brand = pygame.font.SysFont("Georgia", 36, bold=True)
         self.font_small = pygame.font.SysFont("Segoe UI", 20)
 
-        # Reusable alpha surfaces
+        # Reusable alpha surfaces (drawn at full canvas resolution)
         self.rain_surf  = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
         self.light_surf = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
         self.flash_surf = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
@@ -185,73 +193,95 @@ class CathedralStormVisualizer:
     def _load_logo(self, path: str):
         """Load cross logo, convert to pygame surface with alpha."""
         img = Image.open(path).convert("RGBA")
-        # Scale to fit rose window area (~300x300)
         size = 280
         img  = img.resize((size, size), Image.LANCZOS)
         raw  = img.tobytes()
         self.logo_surf = pygame.image.fromstring(raw, img.size, "RGBA").convert_alpha()
         self.logo_size = size
 
+    def _load_assets(self):
+        """Load and pre-scale all PNG background assets with correct transparency."""
+        assets = os.path.join(os.path.dirname(__file__), "..", "assets")
+
+        def pil_to_pygame(img: Image.Image) -> pygame.Surface:
+            raw = img.tobytes()
+            return pygame.image.fromstring(raw, img.size, "RGBA").convert_alpha()
+
+        def load_scaled_rgba(fname, w, h) -> Image.Image:
+            path = os.path.join(assets, fname)
+            img  = Image.open(path).convert("RGBA")
+            return img.resize((w, h), Image.LANCZOS)
+
+        # --- Storm sky: just scale, keep as-is ---
+        sky_img = load_scaled_rgba("storm_sky.png", self.W, self.H)
+        self.sky_surf = pil_to_pygame(sky_img)
+
+        # --- Cathedral silhouette: REMOVE white/grey background, keep dark pixels only ---
+        cat_img = load_scaled_rgba("cathedral_silhouette.png", self.W, self.H)
+        cat_arr = np.array(cat_img)
+        # Brightness of each pixel (max of R,G,B)
+        brightness = cat_arr[:, :, :3].max(axis=2)
+        # Make bright pixels (background) fully transparent; dark pixels opaque
+        cat_arr[:, :, 3] = np.where(brightness > 100, 0, 255)
+        # Recolor dark pixels to near-black with a slight blue tint
+        mask = brightness <= 100
+        cat_arr[mask, 0] = 10
+        cat_arr[mask, 1] = 6
+        cat_arr[mask, 2] = 18
+        self.cathedral_surf = pil_to_pygame(Image.fromarray(cat_arr, "RGBA"))
+
+        # --- Rose window + cross: load both bright and dark versions ---
+        rw_size = 400   # display size on canvas (pixels)
+        
+        def load_masked_rose(filename):
+            img = load_scaled_rgba(filename, rw_size, rw_size)
+            arr = np.array(img)
+            # Apply circular alpha mask
+            cy_img, cx_img = rw_size // 2, rw_size // 2
+            ys, xs = np.ogrid[:rw_size, :rw_size]
+            dist = np.sqrt((xs - cx_img)**2 + (ys - cy_img)**2)
+            outside_circle = dist > (rw_size // 2 - 2)
+            arr[outside_circle, 3] = 0
+            return pil_to_pygame(Image.fromarray(arr, "RGBA"))
+
+        self.rose_window_bright = load_masked_rose("rose_window_cross.png")
+        self.rose_window_dark   = load_masked_rose("rose_window_crossDark.png")
+        self.rose_window_size   = rw_size
+
+        # --- Cobblestone ground: Wide strip texture ---
+        ground_h = self.H - 840
+        ground_img = load_scaled_rgba("cobblestone_ground.png", self.W, ground_h)
+        self.ground_surf = pil_to_pygame(ground_img)
+
+        # Pre-darken ground image
+        dark = pygame.Surface((self.W, ground_h), pygame.SRCALPHA)
+        dark.fill((0, 0, 0, 160))
+        self.ground_surf.blit(dark, (0, 0))
+
+
+        print("[Assets] All image assets loaded and processed.")
+
     def _build_cathedral(self) -> pygame.Surface:
-        """Draws the gothic cathedral silhouette onto a surface."""
-        surf = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
-        cx   = self.W // 2
-        col  = (12, 8, 20, 255)   # Very dark, near-black
+        """Returns the pre-processed transparent cathedral silhouette (built in _load_assets)."""
+        return self.cathedral_surf
 
-        # ---- Main nave (central tower body) ----
-        nave_rect = pygame.Rect(cx - 200, 200, 400, 700)
-        pygame.draw.rect(surf, col, nave_rect)
-
-        # Nave roof (pointed arch / gable)
-        roof_pts = [(cx - 200, 200), (cx, 60), (cx + 200, 200)]
-        pygame.draw.polygon(surf, col, roof_pts)
-
-        # ---- Left transept ----
-        l_rect = pygame.Rect(cx - 480, 380, 280, 520)
-        pygame.draw.rect(surf, col, l_rect)
-        l_roof = [(cx - 480, 380), (cx - 340, 250), (cx - 200, 380)]
-        pygame.draw.polygon(surf, col, l_roof)
-
-        # ---- Right transept ----
-        r_rect = pygame.Rect(cx + 200, 380, 280, 520)
-        pygame.draw.rect(surf, col, r_rect)
-        r_roof = [(cx + 200, 380), (cx + 340, 250), (cx + 480, 380)]
-        pygame.draw.polygon(surf, col, r_roof)
-
-        # ---- Left bell tower ----
-        pygame.draw.rect(surf, col, pygame.Rect(cx - 620, 180, 120, 720))
-        lt_roof = [(cx - 620, 180), (cx - 560, 80), (cx - 500, 180)]
-        pygame.draw.polygon(surf, col, lt_roof)
-
-        # ---- Right bell tower ----
-        pygame.draw.rect(surf, col, pygame.Rect(cx + 500, 180, 120, 720))
-        rt_roof = [(cx + 500, 180), (cx + 560, 80), (cx + 620, 180)]
-        pygame.draw.polygon(surf, col, rt_roof)
-
-        # ---- Ground / base ----
-        pygame.draw.rect(surf, (8, 5, 15, 255),
-                         pygame.Rect(0, 880, self.W, self.H - 880))
-
-        return surf
 
     # ------------------------------------------------------------------
     # Drawing helpers
     # ------------------------------------------------------------------
     def _draw_sky(self, surf, rms: float):
-        brightness = int(10 + rms * 20)
-        sky_top    = (brightness, brightness // 2, brightness * 2)
-        sky_bot    = (brightness * 2, brightness, brightness * 3 + 10)
-        for y in range(self.H // 2):
-            t   = y / (self.H / 2)
-            col = lerp_colour(sky_top, sky_bot, t)
-            pygame.draw.line(surf, col, (0, y), (self.W, y))
+        """Blit the storm sky PNG, brightening slightly with loudness."""
+        surf.blit(self.sky_surf, (0, 0))
+        # Subtle brightness pulse with RMS — overlay a semi-transparent layer
+        if rms > 0.05:
+            bright = pygame.Surface((self.W, self.H // 2), pygame.SRCALPHA)
+            bright.fill((30, 10, 60, int(rms * 40)))
+            surf.blit(bright, (0, 0))
 
     def _draw_ground(self, surf):
-        # Dark cobblestone ground gradient
-        for y in range(850, self.H):
-            t   = (y - 850) / (self.H - 850)
-            col = lerp_colour((12, 8, 18), (5, 3, 10), t)
-            pygame.draw.line(surf, col, (0, y), (self.W, y))
+        """Draw the wide cobblestone texture across the lower ground strip."""
+        surf.blit(self.ground_surf, (0, 840))
+
 
     def _draw_light_spill(self, surf, bass: float, spectrum: np.ndarray):
         """Colored light cones spilling from stained-glass windows onto ground."""
@@ -287,28 +317,28 @@ class CathedralStormVisualizer:
         surf.blit(self.light_surf, (0, 0))
 
     def _draw_rose_window(self, surf, spectrum: np.ndarray, bass: float):
-        """Stained-glass rose window with logo center."""
-        cx, cy = self.W // 2, 420
-        outer_r = 160
-        inner_r = 70      # Logo occupies this zone
+        """Stained-glass rose window — animated colour segments behind the combined image."""
+        cx, cy  = self.W // 2, 420
+        outer_r = self.rose_window_size // 2   # matches the image radius
+        inner_r = 60
 
-        # Draw radial segments (petals) colored by frequency
+        # --- Animated colour segments (drawn BEHIND the image) ---
         n_seg     = len(WINDOW_COLOURS)
         bands     = np.array_split(spectrum, n_seg)
         seg_angle = 360 / n_seg
 
         for i, (band_vals, colour) in enumerate(zip(bands, WINDOW_COLOURS)):
             energy = float(band_vals.mean())
-            self.window_glow[i] = self.window_glow[i] * 0.85 + energy * 0.15  # Smooth
+            self.window_glow[i] = self.window_glow[i] * 0.85 + energy * 0.15
 
             if self.window_glow[i] < 0.02:
                 continue
-            alpha = int(self.window_glow[i] * 220)
+            alpha = int(self.window_glow[i] * 200)
             col   = (*colour, alpha)
 
             start_angle = math.radians(i * seg_angle - 90)
             end_angle   = math.radians((i + 1) * seg_angle - 90)
-            N_pts       = 20
+            N_pts = 20
 
             pts = [(int(cx + inner_r * math.cos(start_angle)),
                     int(cy + inner_r * math.sin(start_angle)))]
@@ -323,20 +353,31 @@ class CathedralStormVisualizer:
             pygame.draw.polygon(tmp, col, pts)
             surf.blit(tmp, (0, 0))
 
-        # Outer ring
-        pygame.draw.circle(surf, (50, 40, 80), (cx, cy), outer_r, 3)
-        pygame.draw.circle(surf, (30, 20, 60), (cx, cy), inner_r + 2, 2)
-
-        # Glow halo (bass-driven)
-        halo_r = int(outer_r + bass * 40)
-        halo_a = int(bass * 80)
+        # --- Glow halo behind the window (bass-driven soft gradient) ---
+        halo_r = int(outer_r + bass * 50)
+        halo_a = int(bass * 90)
         if halo_a > 5:
-            pygame.draw.circle(surf, (*CYAN, halo_a), (cx, cy), halo_r, 4)
+            halo_surf = pygame.Surface((halo_r * 2, halo_r * 2), pygame.SRCALPHA)
+            # Draw concentric circles fading out to create soft edge
+            for r in range(outer_r, halo_r, 3):
+                a = int(halo_a * (1.0 - (r - outer_r) / (halo_r - outer_r)))
+                pygame.draw.circle(halo_surf, (*CYAN, a), (halo_r, halo_r), r, 4)
+            surf.blit(halo_surf, (cx - halo_r, cy - halo_r))
 
-        # Logo center
-        logo_x = cx - self.logo_size // 2
-        logo_y = cy - self.logo_size // 2
-        surf.blit(self.logo_surf, (logo_x, logo_y))
+        # --- Combined rose window + cross image on top ---
+        img_x = cx - self.rose_window_size // 2
+        img_y = cy - self.rose_window_size // 2
+        
+        # Draw the dark base image always
+        surf.blit(self.rose_window_dark, (img_x, img_y))
+        
+        # Flash the bright image on heavy beats (driven by bass level)
+        # bass normally hovers 0.1 - 0.4. Scale to 0-255.
+        pulse_alpha = int(min(max(bass * 300 - 30, 0), 255))
+        if pulse_alpha > 5:
+            self.rose_window_bright.set_alpha(pulse_alpha)
+            surf.blit(self.rose_window_bright, (img_x, img_y))
+
 
     def _draw_side_windows(self, surf, mid: float, treble: float):
         """Arched gothic windows on the side transepts."""
@@ -345,17 +386,19 @@ class CathedralStormVisualizer:
         self.side_glow_r = self.side_glow_r * 0.8 + treble * 0.2
 
         windows = [
-            # (center_x, center_y, w, h, glow, colour)
-            (cx - 380, 490, 60, 100, self.side_glow_l, WINDOW_COLOURS[1]),
-            (cx + 380, 490, 60, 100, self.side_glow_r, WINDOW_COLOURS[0]),
+            # (center_x, bottom_y, w, h, glow, colour)
+            (cx - 380, 540, 60, 140, self.side_glow_l, WINDOW_COLOURS[1]),
+            (cx + 380, 540, 60, 140, self.side_glow_r, WINDOW_COLOURS[0]),
         ]
         for wx, wy, ww, wh, glow, col in windows:
             if glow < 0.02:
                 continue
             alpha = int(glow * 200)
             tmp   = pygame.Surface((ww, wh), pygame.SRCALPHA)
-            pygame.draw.ellipse(tmp, (*col, alpha), tmp.get_rect())
-            surf.blit(tmp, (wx - ww // 2, wy - wh // 2))
+            # Arched gothic shape
+            pts = [(0, wh), (ww, wh), (ww, wh // 3), (ww // 2, 0), (0, wh // 3)]
+            pygame.draw.polygon(tmp, (*col, alpha), pts)
+            surf.blit(tmp, (wx - ww // 2, wy - wh))
 
     def _draw_spectrum_bars(self, surf, spectrum: np.ndarray):
         """Symmetric spectrum bars at the bottom of the screen."""
@@ -427,7 +470,8 @@ class CathedralStormVisualizer:
         is_beat   = self.analyzer.is_beat(frame_idx)
         onset     = self.analyzer.get_onset_strength(frame_idx)
 
-        surf = self.screen
+        # All drawing happens on the full-res canvas
+        surf = self.canvas
 
         # --- 1. Sky ---
         self._draw_sky(surf, rms)
@@ -448,7 +492,6 @@ class CathedralStormVisualizer:
         self._draw_side_windows(surf, mid, treble)
 
         # --- 7. Rain ---
-        # Tint rain based on dominant window colour
         avg_energy = float(spectrum.mean())
         tint_col   = lerp_colour((100, 120, 160),
                                   WINDOW_COLOURS[int(avg_energy * 5)],
@@ -461,7 +504,8 @@ class CathedralStormVisualizer:
                 p.trigger_ripple()
         for p in self.puddles:
             p.update()
-            beat_col = WINDOW_COLOURS[int(bass * 5)]
+            # Puddles reflect window light — tint between dark blue and cyan based on bass
+            beat_col = lerp_colour((20, 40, 80), (0, 160, 220), min(bass * 1.5, 1.0))
             p.draw(surf, beat_col, rms)
 
         # --- 9. Spectrum bars ---
@@ -475,8 +519,13 @@ class CathedralStormVisualizer:
             self._trigger_lightning()
         self._draw_flash(surf)
 
+        # Scale full canvas down to the preview window
+        preview = pygame.transform.scale(self.canvas, (self.PW, self.PH))
+        self.screen.blit(preview, (0, 0))
         pygame.display.flip()
-        return surf
+
+        # Return the full-res canvas for the recorder
+        return self.canvas
 
     # ------------------------------------------------------------------
     # Run loop (called from launcher after everything is set up)
@@ -505,10 +554,10 @@ class CathedralStormVisualizer:
                 self.running = False
                 break
 
-            frame_surf = self.render_frame(pos)
+            canvas = self.render_frame(pos)
 
             if recorder:
-                recorder.write_frame(frame_surf)
+                recorder.write_frame(canvas)  # Always records at full 1920x1080
 
             self.clock.tick(60)
 

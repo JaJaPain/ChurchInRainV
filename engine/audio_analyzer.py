@@ -22,6 +22,8 @@ class AudioAnalyzer:
         self.tempo, self.beat_frames = librosa.beat.beat_track(
             y=self.audio, sr=self.sr, hop_length=512
         )
+        # librosa may return tempo as a numpy array in newer versions — cast to scalar
+        self.tempo = float(np.atleast_1d(self.tempo)[0])
 
         # RMS energy per frame
         self.rms_frames = librosa.feature.rms(
