@@ -455,13 +455,6 @@ class CathedralStormVisualizer:
                 pygame.draw.rect(surf, cap_col,
                                  pygame.Rect(x_l, self.H - 160 - h - 2, bar_w, 3))
 
-    def _draw_branding(self, surf):
-        txt = self.font_brand.render("Modern Christian Rock Music", True, (160, 120, 220))
-        glow_txt = self.font_brand.render("Modern Christian Rock Music", True, (80, 0, 160))
-        x = (self.W - txt.get_width()) // 2
-        y = self.H - 60
-        surf.blit(glow_txt, (x + 2, y + 2))
-        surf.blit(txt, (x, y))
 
     def _trigger_lightning(self):
         self.flash_alpha  = random.randint(120, 220)
@@ -491,7 +484,7 @@ class CathedralStormVisualizer:
         drift_speed = 0.8 + rms * 2.0
         self.fog_x = (self.fog_x + drift_speed) % self.fog_w
         
-        y_pos = 690  # Lowered to cover ground transition (840) more effectively
+        y_pos = 730  # Restored to the very bottom (1080 - 350px height)
         
         # Tile twice for seamless wrapping
         surf.blit(self.fog_surf, (-self.fog_x, y_pos))
@@ -549,13 +542,10 @@ class CathedralStormVisualizer:
             beat_col = lerp_colour((20, 40, 80), (0, 160, 220), min(bass * 1.5, 1.0))
             p.draw(surf, beat_col, rms)
 
-        # --- 9. Spectrum bars ---
+        # Spectrum bars
         self._draw_spectrum_bars(surf, spectrum)
 
-        # --- 10. Branding ---
-        self._draw_branding(surf)
-
-        # --- 11. Lightning flash ---
+        # Lightning flash
         if onset > 0.85 and random.random() < 0.25:
             self._trigger_lightning()
         self._draw_flash(surf)
