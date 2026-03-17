@@ -579,6 +579,8 @@ class CathedralStormVisualizer:
 
         self.clock.tick()  # Reset clock before loop
 
+        recording_frame_count = 0
+        
         while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -587,7 +589,19 @@ class CathedralStormVisualizer:
                     if event.key == pygame.K_ESCAPE:
                         self.running = False
 
-            pos = get_pos()
+            if recorder:
+                # LOCK-STEP RECORDING: Ignore real-time, render exactly 60fps
+                # This ensures the video length matches the audio perfectly.
+                real_time_pos = get_pos()
+                if real_time_pos is None:
+                    self.running = False
+                    break
+                pos = recording_frame_count / 60.0
+                recording_frame_count += 1
+            else:
+                # Real-time preview
+                pos = get_pos()
+
             if pos is None or pos >= self.analyzer.duration:
                 self.running = False
                 break
@@ -597,7 +611,12 @@ class CathedralStormVisualizer:
             if recorder:
                 recorder.write_frame(canvas)  # Always records at full 1920x1080
 
-            self.clock.tick(60)
+            # Only cap frame rate if NOT recording (encoding might be slower)
+            if not recorder:
+                self.clock.tick(60)
+            else:
+                # Just yield to OS slightly but don't hard-cap
+                pygame.time.delay(1)
 
         if recorder:
             recorder.stop()

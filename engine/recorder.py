@@ -18,7 +18,7 @@ class VideoRecorder:
         self.fps = fps
         self.audio_path = audio_path
         self._proc = None
-        self._queue = queue.Queue(maxsize=120)  # Buffer up to 2 seconds of frames
+        self._queue = queue.Queue(maxsize=300)  # Buffer up to 5 seconds of frames
         self._thread = None
         self._running = False
 
@@ -85,9 +85,10 @@ class VideoRecorder:
             raw = pygame.surfarray.array3d(surface)
             # pygame uses (x, y) but FFmpeg wants (y, x) = (H, W, 3)
             frame = np.transpose(raw, (1, 0, 2))
-            self._queue.put_nowait(frame)
-        except queue.Full:
-            pass  # Drop frame rather than block render
+            # Block if queue is full to ensure NO frames are dropped
+            self._queue.put(frame, block=True)
+        except Exception as e:
+            print(f"[Recorder] Error queuing frame: {e}")
 
     def stop(self):
         """Signal writer thread to finish and wait for FFmpeg to finalize."""
