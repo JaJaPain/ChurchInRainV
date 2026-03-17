@@ -160,9 +160,7 @@ class Launcher:
         except:
             pass
 
-        # The visualizer loop monitors self.is_running and will call recorder.stop()
-        # We give a brief moment then ask
-        self.root.after(1500, self._prompt_keep_discard)
+        # The visualizer loop monitors self.is_running and will catch up.
 
     def _prompt_keep_discard(self):
         if not hasattr(self, "_last_output") or not self._last_output:
@@ -244,17 +242,16 @@ class Launcher:
             self.root.after(0, lambda: self.stop_btn.config(state="disabled"))
 
     def _on_viz_finished(self):
-        """Called from main thread after visualizer loop exits normally (song ended)."""
+        """Called from main thread after visualizer loop exits and recorder stops."""
         self.is_running = False
         self.start_btn.config(state="normal")
         self.stop_btn.config(state="disabled")
 
         if hasattr(self, "_last_output") and os.path.exists(self._last_output):
-            self.status_var.set(f"✅ Done! Video saved to: {self._last_output}")
-            messagebox.showinfo("Export Complete",
-                f"🎉 Your video is ready!\n\n{self._last_output}")
+            self.status_var.set(f"✅ Video Processing Finished: {self._last_output}")
+            self._prompt_keep_discard()
         else:
-            self.status_var.set("Done.")
+            self.status_var.set("Ready.")
 
     # ------------------------------------------------------------------
     def run(self):

@@ -581,7 +581,10 @@ class CathedralStormVisualizer:
         self.clock.tick()  # Reset clock before loop
 
         recording_frame_count = 0
-        
+        target_duration = self.analyzer.duration
+        user_stopped = False
+        last_valid_rt_pos = 0.0
+
         while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -591,28 +594,35 @@ class CathedralStormVisualizer:
                         self.running = False
 
             if recorder:
-                # User hit STOP?
-                real_time_check = get_pos() # Still returns None if Stop clicked
-                if real_time_check is None:
-                    print("[Visualizer] Interrupted by user.")
-                    self.running = False
-                    break
+                # Fetch music position (returns None if STOP button was clicked)
+                rt_pos = get_pos()
                 
+                # If audio stopped but we haven't reached the end of the video yet
+                if rt_pos is None and not user_stopped:
+                    user_stopped = True
+                    target_duration = last_valid_rt_pos
+                    print(f"[Visualizer] User stopped playback at {target_duration:.2f}s. Catching up...")
+
+                if rt_pos is not None:
+                    last_valid_rt_pos = rt_pos
+                
+                # Use frame-based position for sync
                 pos = recording_frame_count / 60.0
                 recording_frame_count += 1
                 
                 # Report progress back to UI
-                if recording_frame_count % 60 == 0:
-                    pct = (pos / self.analyzer.duration) * 100
-                    status_msg = f"🎬 Finalizing Video: {pos:.1f}s / {self.analyzer.duration:.1f}s ({pct:.0f}%)"
+                if recording_frame_count % 30 == 0:
+                    prefix = "🎬 Finalizing" if not user_stopped else "🛑 Saving"
+                    pct = (pos / max(0.1, target_duration)) * 100
+                    status_msg = f"{prefix}: {pos:.1f}s / {target_duration:.1f}s ({pct:.0f}%)"
                     if self.status_callback:
                         self.status_callback(status_msg)
             else:
-                # Real-time preview
+                # Real-time preview mode
                 pos = get_pos()
 
-            # Exit when reach end of song
-            if pos is not None and pos >= self.analyzer.duration:
+            # Exit when reach target (either end of song or where user hit stop)
+            if pos is not None and pos >= target_duration:
                 self.running = False
                 break
 
