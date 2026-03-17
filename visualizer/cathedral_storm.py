@@ -226,6 +226,14 @@ class CathedralStormVisualizer:
         brightness = cat_arr[:, :, :3].max(axis=2)
         # Make bright pixels (background) fully transparent; dark pixels opaque
         cat_arr[:, :, 3] = np.where(brightness > 100, 0, 255)
+        
+        # --- Apply linear alpha gradient to the bottom 10% ---
+        grad_h = int(self.H * 0.1)
+        for y in range(self.H - grad_h, self.H):
+            # calculate multiplier (0.0 at bottom-most pixel, 1.0 at start of gradient zone)
+            alpha_mult = (self.H - 1 - y) / (grad_h - 1)
+            cat_arr[y, :, 3] = (cat_arr[y, :, 3] * alpha_mult).astype(np.uint8)
+
         # Recolor dark pixels to near-black with a slight blue tint
         mask = brightness <= 100
         cat_arr[mask, 0] = 10
