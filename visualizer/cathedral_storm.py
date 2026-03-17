@@ -270,19 +270,26 @@ class CathedralStormVisualizer:
         self.ground_surf.blit(dark, (0, 0))
 
         # --- Storm Fog: remove black background, keep white mist ---
-        fog_w, fog_h = self.W, 450
-        fog_img = load_scaled_rgba("storm_fog.png", fog_w, fog_h)
+        # Anchor point: we want the fog to start slightly above the ground (840) to cover the church base,
+        # and span exactly to the bottom of the screen (1080).
+        self.church_base_y = 780 
+        self.fog_h = self.H - self.church_base_y
+        self.fog_w = self.W
+
+        fog_img = load_scaled_rgba("storm_fog.png", self.fog_w, self.fog_h)
         fog_arr = np.array(fog_img)
+        
         # Use brightness as alpha - increased density for better masking
         brightness_fog = fog_arr[:, :, :3].max(axis=2)
-        fog_arr[:, :, 3] = np.clip(brightness_fog * 1.1, 0, 255).astype(np.uint8)
+        fog_arr[:, :, 3] = np.clip(brightness_fog * 1.2, 0, 255).astype(np.uint8)
+        
         # Tint slightly blue-purple
         mask_fog = brightness_fog > 0
         fog_arr[mask_fog, 0] = (fog_arr[mask_fog, 0] * 0.4).astype(np.uint8)
         fog_arr[mask_fog, 1] = (fog_arr[mask_fog, 1] * 0.4).astype(np.uint8)
         fog_arr[mask_fog, 2] = (fog_arr[mask_fog, 2] * 0.6).astype(np.uint8)
+        
         self.fog_surf = pil_to_pygame(Image.fromarray(fog_arr, "RGBA"))
-        self.fog_w = fog_w
 
 
         print("[Assets] All image assets loaded and processed.")
@@ -484,7 +491,7 @@ class CathedralStormVisualizer:
         drift_speed = 0.8 + rms * 2.0
         self.fog_x = (self.fog_x + drift_speed) % self.fog_w
         
-        y_pos = self.H - 450  # Anchored to bottom (1080 - 450px height)
+        y_pos = self.church_base_y  # Spans exactly from here to bottom (1080)
         
         # Tile twice for seamless wrapping
         surf.blit(self.fog_surf, (-self.fog_x, y_pos))
