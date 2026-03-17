@@ -270,7 +270,7 @@ class CathedralStormVisualizer:
         self.ground_surf.blit(dark, (0, 0))
 
         # --- Storm Fog: remove black background, keep white mist ---
-        fog_w, fog_h = self.W, 350
+        fog_w, fog_h = self.W, 450
         fog_img = load_scaled_rgba("storm_fog.png", fog_w, fog_h)
         fog_arr = np.array(fog_img)
         # Use brightness as alpha - increased density for better masking
@@ -441,19 +441,19 @@ class CathedralStormVisualizer:
             # Right side
             x_r = cx + i * (bar_w + 2) + 4
             pygame.draw.rect(surf, col,
-                             pygame.Rect(x_r, self.H - 160 - h, bar_w, h))
+                             pygame.Rect(x_r, self.H - h, bar_w, h))
             # Left mirror
             x_l = cx - (i + 1) * (bar_w + 2) - 4
             pygame.draw.rect(surf, col,
-                             pygame.Rect(x_l, self.H - 160 - h, bar_w, h))
+                             pygame.Rect(x_l, self.H - h, bar_w, h))
 
             # Glow cap
             if h > 5:
                 cap_col = lerp_colour(col, WHITE, 0.6)
                 pygame.draw.rect(surf, cap_col,
-                                 pygame.Rect(x_r, self.H - 160 - h - 2, bar_w, 3))
+                                 pygame.Rect(x_r, self.H - h - 2, bar_w, 3))
                 pygame.draw.rect(surf, cap_col,
-                                 pygame.Rect(x_l, self.H - 160 - h - 2, bar_w, 3))
+                                 pygame.Rect(x_l, self.H - h - 2, bar_w, 3))
 
 
     def _trigger_lightning(self):
@@ -484,7 +484,7 @@ class CathedralStormVisualizer:
         drift_speed = 0.8 + rms * 2.0
         self.fog_x = (self.fog_x + drift_speed) % self.fog_w
         
-        y_pos = 730  # Restored to the very bottom (1080 - 350px height)
+        y_pos = self.H - 450  # Anchored to bottom (1080 - 450px height)
         
         # Tile twice for seamless wrapping
         surf.blit(self.fog_surf, (-self.fog_x, y_pos))
@@ -516,7 +516,17 @@ class CathedralStormVisualizer:
         # --- 4. Cathedral silhouette ---
         surf.blit(self.cathedral_surf, (0, 0))
 
-        # --- 4a. Fog (mask bottom edge of silhouette) ---
+        # --- 8. Puddles (Now drawn before fog so fog masks them) ---
+        if is_beat:
+            for p in random.sample(self.puddles, k=random.randint(1, 3)):
+                p.trigger_ripple()
+        for p in self.puddles:
+            p.update()
+            # Puddles reflect window light — tint between dark blue and cyan based on bass
+            beat_col = lerp_colour((20, 40, 80), (0, 160, 220), min(bass * 1.5, 1.0))
+            p.draw(surf, beat_col, rms)
+
+        # --- 4a. Fog (mask bottom edge of silhouette and puddles) ---
         self._draw_fog(surf, rms)
 
         # --- 5. Rose window ---
@@ -531,16 +541,6 @@ class CathedralStormVisualizer:
                                   WINDOW_COLOURS[int(avg_energy * 5)],
                                   min(avg_energy * 1.5, 0.5))
         self._draw_rain(surf, rms, tint_col)
-
-        # --- 8. Puddles ---
-        if is_beat:
-            for p in random.sample(self.puddles, k=random.randint(1, 3)):
-                p.trigger_ripple()
-        for p in self.puddles:
-            p.update()
-            # Puddles reflect window light — tint between dark blue and cyan based on bass
-            beat_col = lerp_colour((20, 40, 80), (0, 160, 220), min(bass * 1.5, 1.0))
-            p.draw(surf, beat_col, rms)
 
         # Spectrum bars
         self._draw_spectrum_bars(surf, spectrum)
