@@ -229,8 +229,12 @@ class Launcher:
             viz.run(audio_start_fn=lambda: get_pos, recorder=recorder)
 
             # After loop ends (song finished or ESC)
-            pygame.mixer.music.stop()
-            pygame.mixer.quit()
+            try:
+                if pygame.mixer.get_init() is not None:
+                    pygame.mixer.music.stop()
+                    pygame.mixer.quit()
+            except Exception:
+                pass
 
             self.root.after(0, self._on_viz_finished)
 

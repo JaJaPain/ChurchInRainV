@@ -501,7 +501,7 @@ class CathedralStormVisualizer:
     # ------------------------------------------------------------------
     # Main render frame
     # ------------------------------------------------------------------
-    def render_frame(self, pos_seconds: float):
+    def render_frame(self, pos_seconds: float, user_stopped: bool = False):
         frame_idx = self.analyzer.get_frame_index(pos_seconds)
         spectrum  = self.analyzer.get_spectrum(frame_idx, n_bands=48)
         bass, mid, treble = self.analyzer.get_bass_mid_treble(frame_idx)
@@ -559,8 +559,14 @@ class CathedralStormVisualizer:
         self._draw_flash(surf)
 
         # Scale full canvas down to the preview window
-        preview = pygame.transform.scale(self.canvas, (self.PW, self.PH))
-        self.screen.blit(preview, (0, 0))
+        if not user_stopped:
+            preview = pygame.transform.scale(self.canvas, (self.PW, self.PH))
+            self.screen.blit(preview, (0, 0))
+        else:
+            self.screen.fill((10, 6, 18))
+            msg = self.font_brand.render("Processing Background Video... Please Wait.", True, (160, 120, 220))
+            self.screen.blit(msg, ((self.PW - msg.get_width()) // 2, self.PH // 2))
+
         pygame.display.flip()
 
         # Return the full-res canvas for the recorder
@@ -626,7 +632,7 @@ class CathedralStormVisualizer:
                 self.running = False
                 break
 
-            canvas = self.render_frame(pos)
+            canvas = self.render_frame(pos, user_stopped=user_stopped)
 
             if recorder:
                 recorder.write_frame(canvas)  # Always records at full 1920x1080
