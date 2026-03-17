@@ -159,6 +159,11 @@ class CathedralStormVisualizer:
         # Lightning flash state
         self.flash_alpha  = 0
         self.flash_colour = (255, 255, 255)
+        
+        # Lightning Bolt state
+        self.bolt_surf = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
+        self.bolt_alpha = 0
+        self.next_bolt_time = random.uniform(15, 20)
 
         # Window glow state
         self.window_glow   = [0.0] * 6   # 6 stained glass segments
@@ -310,6 +315,13 @@ class CathedralStormVisualizer:
     def _draw_sky(self, surf, rms: float):
         """Blit the storm sky PNG, brightening slightly with loudness."""
         surf.blit(self.sky_surf, (0, 0))
+        
+        # Jaged Lightning Bolt (strikes behind cathedral)
+        if self.bolt_alpha > 0:
+            self.bolt_surf.set_alpha(self.bolt_alpha)
+            surf.blit(self.bolt_surf, (0, 0))
+            self.bolt_alpha = max(0, self.bolt_alpha - 12) # Fade out smoothly
+
         # Subtle brightness pulse with RMS — overlay a semi-transparent layer
         if rms > 0.05:
             bright = pygame.Surface((self.W, self.H // 2), pygame.SRCALPHA)
@@ -475,6 +487,46 @@ class CathedralStormVisualizer:
                                  pygame.Rect(x_l, self.H - h - 2, bar_w, 3))
 
 
+    def _create_bolt_path(self, surface, start_pos, end_pos, displacement, detail_threshold):
+        """Recursively draws a jagged lightning bolt on a transparent surface."""
+        if displacement < detail_threshold:
+            # Draw core
+            pygame.draw.line(surface, (230, 245, 255, 255), start_pos, end_pos, width=2)
+            # Draw slight glow
+            pygame.draw.line(surface, (180, 210, 255, 80), start_pos, end_pos, width=6)
+            return
+
+        mid_x = (start_pos[0] + end_pos[0]) / 2 + random.uniform(-displacement, displacement)
+        mid_y = (start_pos[1] + end_pos[1]) / 2 + random.uniform(-displacement, displacement)
+        new_mid = (mid_x, mid_y)
+
+        self._create_bolt_path(surface, start_pos, new_mid, displacement / 2, detail_threshold)
+        self._create_bolt_path(surface, new_mid, end_pos, displacement / 2, detail_threshold)
+
+        if random.random() < 0.2: # 20% branch chance
+            branch_x = new_mid[0] + random.uniform(-displacement * 3, displacement * 3)
+            branch_y = new_mid[1] + random.uniform(0, displacement * 4)
+            self._create_bolt_path(surface, new_mid, (branch_x, branch_y), displacement / 2.5, detail_threshold)
+
+    def _trigger_bolt(self):
+        """Generate a random jagged bolt in one of the open sky areas."""
+        self.bolt_surf.fill((0, 0, 0, 0))
+        self.bolt_alpha = 255
+        
+        # Left or Right side of Cathedral
+        if random.choice([True, False]):
+            start_x = random.randint(100, self.W // 2 - 400)
+            end_x   = start_x + random.randint(-150, 150)
+        else:
+            start_x = random.randint(self.W // 2 + 400, self.W - 100)
+            end_x   = start_x + random.randint(-150, 150)
+            
+        start_pos = (start_x, 0)
+        end_pos   = (end_x, self.H // 2 + random.randint(50, 250)) # Strike down
+        
+        self._create_bolt_path(self.bolt_surf, start_pos, end_pos, 80, 3)
+        self._trigger_lightning() # Also flash the screen
+
     def _trigger_lightning(self):
         self.flash_alpha  = random.randint(120, 220)
         self.flash_colour = random.choice([
@@ -519,6 +571,11 @@ class CathedralStormVisualizer:
         rms       = self.analyzer.get_rms(frame_idx)
         is_beat   = self.analyzer.is_beat(frame_idx)
         onset     = self.analyzer.get_onset_strength(frame_idx)
+
+        # Scheduled Lightning Bolts
+        if pos_seconds >= self.next_bolt_time:
+            self._trigger_bolt()
+            self.next_bolt_time = pos_seconds + random.uniform(15, 20)
 
         # All drawing happens on the full-res canvas
         surf = self.canvas
