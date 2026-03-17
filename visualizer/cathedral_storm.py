@@ -292,6 +292,10 @@ class CathedralStormVisualizer:
         
         self.fog_surf = pil_to_pygame(Image.fromarray(fog_arr, "RGBA"))
 
+        # --- Side window image ---
+        side_img = load_scaled_rgba("side_window_stained.png", 60, 140)
+        self.side_window_surf = pil_to_pygame(side_img)
+
 
         print("[Assets] All image assets loaded and processed.")
 
@@ -427,12 +431,19 @@ class CathedralStormVisualizer:
         for wx, wy, ww, wh, glow, col in windows:
             if glow < 0.02:
                 continue
-            alpha = int(glow * 200)
-            tmp   = pygame.Surface((ww, wh), pygame.SRCALPHA)
-            # Arched gothic shape
-            pts = [(0, wh), (ww, wh), (ww, wh // 3), (ww // 2, 0), (0, wh // 3)]
-            pygame.draw.polygon(tmp, (*col, alpha), pts)
-            surf.blit(tmp, (wx - ww // 2, wy - wh))
+            
+            # Use the new asset!
+            alpha = int(glow * 255)
+            # Create a tinted/glow version by setting image alpha
+            # (We keep the polygon logic below for easy rollback)
+            # pts = [(0, wh), (ww, wh), (ww, wh // 3), (ww // 2, 0), (0, wh // 3)]
+            # tmp = pygame.Surface((ww, wh), pygame.SRCALPHA)
+            # pygame.draw.polygon(tmp, (*col, int(glow * 200)), pts)
+            
+            # Draw the PNG asset with pulsing alpha
+            asset = self.side_window_surf.copy()
+            asset.fill((255, 255, 255, alpha), special_flags=pygame.BLEND_RGBA_MULT)
+            surf.blit(asset, (wx - ww // 2, wy - wh))
 
     def _draw_spectrum_bars(self, surf, spectrum: np.ndarray):
         """Symmetric spectrum bars at the bottom of the screen."""
