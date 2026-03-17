@@ -512,7 +512,7 @@ class CathedralStormVisualizer:
     # ------------------------------------------------------------------
     # Main render frame
     # ------------------------------------------------------------------
-    def render_frame(self, pos_seconds: float, user_stopped: bool = False):
+    def render_frame(self, pos_seconds: float, hide_preview: bool = False):
         frame_idx = self.analyzer.get_frame_index(pos_seconds)
         spectrum  = self.analyzer.get_spectrum(frame_idx, n_bands=48)
         bass, mid, treble = self.analyzer.get_bass_mid_treble(frame_idx)
@@ -570,7 +570,7 @@ class CathedralStormVisualizer:
         self._draw_flash(surf)
 
         # Scale full canvas down to the preview window
-        if not user_stopped:
+        if not hide_preview:
             preview = pygame.transform.scale(self.canvas, (self.PW, self.PH))
             self.screen.blit(preview, (0, 0))
         else:
@@ -600,6 +600,7 @@ class CathedralStormVisualizer:
         recording_frame_count = 0
         target_duration = self.analyzer.duration
         user_stopped = False
+        hide_preview = False
         last_valid_rt_pos = 0.0
 
         while self.running:
@@ -617,11 +618,16 @@ class CathedralStormVisualizer:
                 # If audio stopped but we haven't reached the end of the video yet
                 if rt_pos is None and not user_stopped:
                     user_stopped = True
+                    hide_preview = True
                     target_duration = last_valid_rt_pos
                     print(f"[Visualizer] User stopped playback at {target_duration:.2f}s. Catching up...")
 
                 if rt_pos is not None:
                     last_valid_rt_pos = rt_pos
+                    # Automatically hide preview and fast-forward if real-time audio is done
+                    if rt_pos >= self.analyzer.duration and not hide_preview:
+                        hide_preview = True
+                        print("[Visualizer] Audio finished playing. Finalizing remaining frames...")
                 
                 # Use frame-based position for sync
                 pos = recording_frame_count / 60.0
@@ -643,7 +649,7 @@ class CathedralStormVisualizer:
                 self.running = False
                 break
 
-            canvas = self.render_frame(pos, user_stopped=user_stopped)
+            canvas = self.render_frame(pos, hide_preview=hide_preview)
 
             if recorder:
                 recorder.write_frame(canvas)  # Always records at full 1920x1080
