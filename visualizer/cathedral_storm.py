@@ -265,9 +265,9 @@ class CathedralStormVisualizer:
         fog_w, fog_h = self.W, 350
         fog_img = load_scaled_rgba("storm_fog.png", fog_w, fog_h)
         fog_arr = np.array(fog_img)
-        # Use brightness as alpha
+        # Use brightness as alpha - increased density for better masking
         brightness_fog = fog_arr[:, :, :3].max(axis=2)
-        fog_arr[:, :, 3] = np.clip(brightness_fog * 0.8, 0, 255).astype(np.uint8)
+        fog_arr[:, :, 3] = np.clip(brightness_fog * 1.1, 0, 255).astype(np.uint8)
         # Tint slightly blue-purple
         mask_fog = brightness_fog > 0
         fog_arr[mask_fog, 0] = (fog_arr[mask_fog, 0] * 0.4).astype(np.uint8)
@@ -483,7 +483,7 @@ class CathedralStormVisualizer:
         drift_speed = 0.8 + rms * 2.0
         self.fog_x = (self.fog_x + drift_speed) % self.fog_w
         
-        y_pos = 580  # Sits just above ground, covering cathedral base
+        y_pos = 690  # Lowered to cover ground transition (840) more effectively
         
         # Tile twice for seamless wrapping
         surf.blit(self.fog_surf, (-self.fog_x, y_pos))
