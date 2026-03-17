@@ -187,6 +187,9 @@ class CathedralStormVisualizer:
         self._pos_seconds = 0.0
         self._recorder      = None
 
+        # Fog drift state
+        self.fog_x = 0.0
+
     # ------------------------------------------------------------------
     # Asset loading
     # ------------------------------------------------------------------
@@ -257,6 +260,21 @@ class CathedralStormVisualizer:
         dark = pygame.Surface((self.W, ground_h), pygame.SRCALPHA)
         dark.fill((0, 0, 0, 160))
         self.ground_surf.blit(dark, (0, 0))
+
+        # --- Storm Fog: remove black background, keep white mist ---
+        fog_w, fog_h = self.W, 350
+        fog_img = load_scaled_rgba("storm_fog.png", fog_w, fog_h)
+        fog_arr = np.array(fog_img)
+        # Use brightness as alpha
+        brightness_fog = fog_arr[:, :, :3].max(axis=2)
+        fog_arr[:, :, 3] = np.clip(brightness_fog * 0.8, 0, 255).astype(np.uint8)
+        # Tint slightly blue-purple
+        mask_fog = brightness_fog > 0
+        fog_arr[mask_fog, 0] = (fog_arr[mask_fog, 0] * 0.4).astype(np.uint8)
+        fog_arr[mask_fog, 1] = (fog_arr[mask_fog, 1] * 0.4).astype(np.uint8)
+        fog_arr[mask_fog, 2] = (fog_arr[mask_fog, 2] * 0.6).astype(np.uint8)
+        self.fog_surf = pil_to_pygame(Image.fromarray(fog_arr, "RGBA"))
+        self.fog_w = fog_w
 
 
         print("[Assets] All image assets loaded and processed.")
@@ -459,6 +477,18 @@ class CathedralStormVisualizer:
             drop.draw(self.rain_surf, rain_tint)
         surf.blit(self.rain_surf, (0, 0))
 
+    def _draw_fog(self, surf, rms: float):
+        """Draw a slowly drifting fog layer at the horizon/ground level."""
+        # Drifts with a slight pulse in speed based on audio energy
+        drift_speed = 0.8 + rms * 2.0
+        self.fog_x = (self.fog_x + drift_speed) % self.fog_w
+        
+        y_pos = 580  # Sits just above ground, covering cathedral base
+        
+        # Tile twice for seamless wrapping
+        surf.blit(self.fog_surf, (-self.fog_x, y_pos))
+        surf.blit(self.fog_surf, (self.fog_w - self.fog_x, y_pos))
+
     # ------------------------------------------------------------------
     # Main render frame
     # ------------------------------------------------------------------
@@ -484,6 +514,9 @@ class CathedralStormVisualizer:
 
         # --- 4. Cathedral silhouette ---
         surf.blit(self.cathedral_surf, (0, 0))
+
+        # --- 4a. Fog (mask bottom edge of silhouette) ---
+        self._draw_fog(surf, rms)
 
         # --- 5. Rose window ---
         self._draw_rose_window(surf, spectrum, bass)
