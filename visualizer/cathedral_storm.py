@@ -140,6 +140,7 @@ class CathedralStormVisualizer:
         self.analyzer   = analyzer
         self.clock      = pygame.time.Clock()
         self.running    = True
+        self.status_callback = None
         self.recording  = False
 
         # Rain
@@ -590,25 +591,28 @@ class CathedralStormVisualizer:
                         self.running = False
 
             if recorder:
-                # LOCK-STEP RECORDING: Ignore real-time, render exactly 60fps
-                # This ensures the video length matches the audio perfectly.
-                real_time_pos = get_pos()
-                if real_time_pos is None:
-                    print("[Visualizer] Stop signal received.")
+                # User hit STOP?
+                real_time_check = get_pos() # Still returns None if Stop clicked
+                if real_time_check is None:
+                    print("[Visualizer] Interrupted by user.")
                     self.running = False
                     break
                 
                 pos = recording_frame_count / 60.0
                 recording_frame_count += 1
                 
-                # Progress every 10 seconds of video
-                if recording_frame_count % 600 == 0:
-                    print(f"[Recorder] Processed {pos:.1f}s of video...")
+                # Report progress back to UI
+                if recording_frame_count % 60 == 0:
+                    pct = (pos / self.analyzer.duration) * 100
+                    status_msg = f"🎬 Finalizing Video: {pos:.1f}s / {self.analyzer.duration:.1f}s ({pct:.0f}%)"
+                    if self.status_callback:
+                        self.status_callback(status_msg)
             else:
                 # Real-time preview
                 pos = get_pos()
 
-            if pos is None or pos >= self.analyzer.duration:
+            # Exit when reach end of song
+            if pos is not None and pos >= self.analyzer.duration:
                 self.running = False
                 break
 

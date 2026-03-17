@@ -223,7 +223,11 @@ class Launcher:
                     return None
                 return time.time() - _start_time
 
+            def update_status(msg):
+                self.root.after(0, lambda: self.status_var.set(msg))
+
             viz = CathedralStormVisualizer(analyzer, LOGO_PATH)
+            viz.status_callback = update_status
             viz.run(audio_start_fn=lambda: get_pos, recorder=recorder)
 
             # After loop ends (song finished or ESC)
