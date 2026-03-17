@@ -1,12 +1,7 @@
-"""
-Video recorder: pipes pygame frames into FFmpeg to produce an MP4.
-Uses a background thread so it never blocks the render loop.
-"""
 import subprocess
 import threading
 import queue
 import os
-import numpy as np
 
 
 class VideoRecorder:
@@ -42,16 +37,18 @@ class VideoRecorder:
 
         cmd += [
             "-vcodec", "libx264",
-            "-preset", "fast",
-            "-crf", "18",         # High quality
+            "-preset", "ultrafast",
+            "-crf", "21",
             "-pix_fmt", "yuv420p",
             "-movflags", "+faststart",
             self.output_path
         ]
 
         print(f"[Recorder] Starting FFmpeg → {self.output_path}")
+        # Increase bufsize for better pipe performance at 1080p
         self._proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                                      stderr=subprocess.DEVNULL)
+                                      stderr=subprocess.DEVNULL,
+                                      bufsize=10**7)
         self._running = True
         self._thread = threading.Thread(target=self._writer_loop, daemon=True)
         self._thread.start()
@@ -63,7 +60,8 @@ class VideoRecorder:
                 frame = self._queue.get(timeout=0.1)
                 if frame is None:
                     break
-                self._proc.stdin.write(frame.tobytes())
+                # write the raw bytes directly to stdin
+                self._proc.stdin.write(frame)
             except queue.Empty:
                 continue
         try:
@@ -82,11 +80,11 @@ class VideoRecorder:
         if not self._running:
             return
         try:
-            raw = pygame.surfarray.array3d(surface)
-            # pygame uses (x, y) but FFmpeg wants (y, x) = (H, W, 3)
-            frame = np.transpose(raw, (1, 0, 2))
+            # OPTIMIZATION: tostring is dramatically faster than array3d+transpose
+            # especially for 1080p frames. 
+            data = pygame.image.tostring(surface, "RGB")
             # Block if queue is full to ensure NO frames are dropped
-            self._queue.put(frame, block=True)
+            self._queue.put(data, block=True)
         except Exception as e:
             print(f"[Recorder] Error queuing frame: {e}")
 

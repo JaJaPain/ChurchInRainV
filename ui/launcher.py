@@ -153,6 +153,12 @@ class Launcher:
         self.is_running = False
         self.start_btn.config(state="normal")
         self.stop_btn.config(state="disabled")
+        
+        # Immediately kill the audio so the user knows it's stopping
+        try:
+            pygame.mixer.music.stop()
+        except:
+            pass
 
         # The visualizer loop monitors self.is_running and will call recorder.stop()
         # We give a brief moment then ask

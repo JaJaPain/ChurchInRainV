@@ -594,10 +594,16 @@ class CathedralStormVisualizer:
                 # This ensures the video length matches the audio perfectly.
                 real_time_pos = get_pos()
                 if real_time_pos is None:
+                    print("[Visualizer] Stop signal received.")
                     self.running = False
                     break
+                
                 pos = recording_frame_count / 60.0
                 recording_frame_count += 1
+                
+                # Progress every 10 seconds of video
+                if recording_frame_count % 600 == 0:
+                    print(f"[Recorder] Processed {pos:.1f}s of video...")
             else:
                 # Real-time preview
                 pos = get_pos()
