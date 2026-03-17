@@ -619,7 +619,8 @@ class CathedralStormVisualizer:
                 if rt_pos is None and not user_stopped:
                     user_stopped = True
                     hide_preview = True
-                    target_duration = last_valid_rt_pos
+                    # Clamp the catch-up duration so it never renders past the actual end of the song
+                    target_duration = min(last_valid_rt_pos, self.analyzer.duration)
                     print(f"[Visualizer] User stopped playback at {target_duration:.2f}s. Catching up...")
 
                 if rt_pos is not None:
