@@ -458,11 +458,15 @@ class CathedralStormVisualizer:
             surf.blit(asset, (wx - ww // 2, wy - wh))
 
     def _draw_spectrum_bars(self, surf, spectrum: np.ndarray):
-        """Symmetric spectrum bars at the bottom of the screen."""
+        """Symmetric spectrum bars resting on a black bar at the bottom."""
+        # Draw the 10-pixel black bar across the bottom
+        pygame.draw.rect(surf, (0, 0, 0), pygame.Rect(0, self.H - 10, self.W, 10))
+
         n     = len(spectrum)
         bar_w = self.W // (n * 2 + 4)
         max_h = 120
         cx    = self.W // 2
+        base_y = self.H - 10
 
         for i, val in enumerate(spectrum):
             h    = int(val * max_h)
@@ -472,19 +476,19 @@ class CathedralStormVisualizer:
             # Right side
             x_r = cx + i * (bar_w + 2) + 4
             pygame.draw.rect(surf, col,
-                             pygame.Rect(x_r, self.H - h, bar_w, h))
+                             pygame.Rect(x_r, base_y - h, bar_w, h))
             # Left mirror
             x_l = cx - (i + 1) * (bar_w + 2) - 4
             pygame.draw.rect(surf, col,
-                             pygame.Rect(x_l, self.H - h, bar_w, h))
+                             pygame.Rect(x_l, base_y - h, bar_w, h))
 
             # Glow cap
             if h > 5:
                 cap_col = lerp_colour(col, WHITE, 0.6)
                 pygame.draw.rect(surf, cap_col,
-                                 pygame.Rect(x_r, self.H - h - 2, bar_w, 3))
+                                 pygame.Rect(x_r, base_y - h - 2, bar_w, 3))
                 pygame.draw.rect(surf, cap_col,
-                                 pygame.Rect(x_l, self.H - h - 2, bar_w, 3))
+                                 pygame.Rect(x_l, base_y - h - 2, bar_w, 3))
 
 
     def _create_bolt_path(self, surface, start_pos, end_pos, displacement, detail_threshold):
