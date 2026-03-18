@@ -147,13 +147,13 @@ class CathedralStormVisualizer:
         N_DROPS = 700
         self.drops = [RainDrop(self.W, self.H) for _ in range(N_DROPS)]
 
-        # Puddles — scattered across the lower third
+        # Puddles — shifted lower toward the bottom of the screen
         self.puddles = [
-            Puddle(300,  900, 90, 25),
-            Puddle(600,  940, 60, 16),
-            Puddle(1000, 910, 110, 28),
-            Puddle(1400, 930, 75, 20),
-            Puddle(1650, 900, 55, 14),
+            Puddle(300,  990, 90, 25),
+            Puddle(600,  1010, 60, 16),
+            Puddle(1000, 995, 110, 28),
+            Puddle(1400, 1005, 75, 20),
+            Puddle(1650, 990, 55, 14),
         ]
 
         # Lightning flash state
