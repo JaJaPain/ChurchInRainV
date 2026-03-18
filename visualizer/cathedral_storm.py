@@ -463,32 +463,59 @@ class CathedralStormVisualizer:
         pygame.draw.rect(surf, (0, 0, 0), pygame.Rect(0, self.H - 10, self.W, 10))
 
         n     = len(spectrum)
+        if not hasattr(self, 'bar_peaks') or len(self.bar_peaks) != n:
+            self.bar_peaks = [0.0] * n
+
         bar_w = self.W // (n * 2 + 4)
-        max_h = 120
+        max_h = 160
         cx    = self.W // 2
         base_y = self.H - 10
 
+        # Pass 1: Draw the wide, darker bloomy "glow" behind the bars
         for i, val in enumerate(spectrum):
             h    = int(val * max_h)
             t    = i / n
-            col  = lerp_colour(CYAN, MAGENTA, t)
+            base_col  = lerp_colour((0, 200, 255), (200, 0, 255), t)
+            glow_col = (base_col[0]//3, base_col[1]//3, base_col[2]//3)
 
-            # Right side
             x_r = cx + i * (bar_w + 2) + 4
-            pygame.draw.rect(surf, col,
-                             pygame.Rect(x_r, base_y - h, bar_w, h))
-            # Left mirror
             x_l = cx - (i + 1) * (bar_w + 2) - 4
-            pygame.draw.rect(surf, col,
-                             pygame.Rect(x_l, base_y - h, bar_w, h))
+            
+            if h > 0:
+                pygame.draw.rect(surf, glow_col, pygame.Rect(x_r - 2, base_y - h, bar_w + 4, h))
+                pygame.draw.rect(surf, glow_col, pygame.Rect(x_l - 2, base_y - h, bar_w + 4, h))
 
-            # Glow cap
-            if h > 5:
-                cap_col = lerp_colour(col, WHITE, 0.6)
-                pygame.draw.rect(surf, cap_col,
-                                 pygame.Rect(x_r, base_y - h - 2, bar_w, 3))
-                pygame.draw.rect(surf, cap_col,
-                                 pygame.Rect(x_l, base_y - h - 2, bar_w, 3))
+        # Pass 2: Draw the bright core and the falling peak cap
+        for i, val in enumerate(spectrum):
+            h    = int(val * max_h)
+            
+            # Update peak hold tracking
+            if h >= self.bar_peaks[i]:
+                self.bar_peaks[i] = h
+            else:
+                self.bar_peaks[i] = max(0, self.bar_peaks[i] - 1.5) # Gravity pulling caps down
+                
+            peak_h = int(self.bar_peaks[i])
+
+            t    = i / n
+            base_col  = lerp_colour((0, 255, 255), (255, 0, 255), t)
+            # Energy mapping: high intensity bars push towards pure white-hot
+            intensity = min(1.0, val * 1.5)
+            hot_col = lerp_colour(base_col, (255, 255, 255), intensity)
+
+            x_r = cx + i * (bar_w + 2) + 4
+            x_l = cx - (i + 1) * (bar_w + 2) - 4
+            
+            # Bright Core
+            if h > 0:
+                pygame.draw.rect(surf, hot_col, pygame.Rect(x_r, base_y - h, bar_w, h))
+                pygame.draw.rect(surf, hot_col, pygame.Rect(x_l, base_y - h, bar_w, h))
+            
+            # Floating Peak Cap
+            if peak_h > 0:
+                cap_col = lerp_colour(base_col, (255, 255, 255), 0.8)
+                pygame.draw.rect(surf, cap_col, pygame.Rect(x_r, base_y - peak_h - 2, bar_w, 2))
+                pygame.draw.rect(surf, cap_col, pygame.Rect(x_l, base_y - peak_h - 2, bar_w, 2))
 
 
     def _create_bolt_path(self, surface, start_pos, end_pos, displacement, detail_threshold):
