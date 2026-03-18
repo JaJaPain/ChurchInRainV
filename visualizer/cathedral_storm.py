@@ -301,6 +301,10 @@ class CathedralStormVisualizer:
         side_img = load_scaled_rgba("side_window_stained.png", 60, 140)
         self.side_window_surf = pil_to_pygame(side_img)
 
+        # --- Lightning Overlay ---
+        lightning_img = load_scaled_rgba("lightning_overlay.png", self.W, self.H)
+        self.lightning_overlay = pil_to_pygame(lightning_img)
+
 
         print("[Assets] All image assets loaded and processed.")
 
@@ -316,10 +320,18 @@ class CathedralStormVisualizer:
         """Blit the storm sky PNG, brightening slightly with loudness."""
         surf.blit(self.sky_surf, (0, 0))
         
-        # Jaged Lightning Bolt (strikes behind cathedral)
+        # Jaged Lightning Bolt + Cloud Glow Overlay
         if self.bolt_alpha > 0:
+            # 1. First, blit the cinematic cloud glow (The "Boom of Light")
+            # We fade it out a bit slower than the harsh flash
+            overlay_alpha = min(255, self.bolt_alpha * 1.2)
+            self.lightning_overlay.set_alpha(int(overlay_alpha))
+            surf.blit(self.lightning_overlay, (0, 0))
+
+            # 2. Then, blit the jagged bolt core on top
             self.bolt_surf.set_alpha(self.bolt_alpha)
             surf.blit(self.bolt_surf, (0, 0))
+            
             self.bolt_alpha = max(0, self.bolt_alpha - 12) # Fade out smoothly
 
         # Subtle brightness pulse with RMS — overlay a semi-transparent layer
@@ -459,7 +471,12 @@ class CathedralStormVisualizer:
             surf.blit(asset, (wx - ww // 2, wy - wh))
 
     def _draw_spectrum_bars(self, surf, spectrum: np.ndarray):
-        """Symmetric spectrum bars resting on a black bar at the bottom."""
+        """Symmetric spectrum bars resting on a black bar at the bottom with a noise gate."""
+        # Noise Gate: Ignore very low-level background hiss/noise
+        NOISE_THRESHOLD = 0.05
+        # Apply the gate to our spectrum array (vectorized for performance)
+        spectrum = np.where(spectrum < NOISE_THRESHOLD, 0.0, spectrum)
+
         # Draw the 10-pixel black bar across the bottom
         pygame.draw.rect(surf, (0, 0, 0), pygame.Rect(0, self.H - 10, self.W, 10))
 
@@ -560,7 +577,8 @@ class CathedralStormVisualizer:
         self._trigger_lightning() # Also flash the screen
 
     def _trigger_lightning(self):
-        self.flash_alpha  = random.randint(120, 220)
+        # Reduced screen flash intensity since the cloud overlay is doing the heavy lifting now
+        self.flash_alpha  = random.randint(60, 130)
         self.flash_colour = random.choice([
             (255, 255, 255), (200, 180, 255), (180, 220, 255)
         ])
