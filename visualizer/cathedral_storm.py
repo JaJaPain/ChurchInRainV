@@ -169,8 +169,11 @@ class CathedralStormVisualizer:
         self.window_glow   = [0.0] * 6   # 6 stained glass segments
         self.side_glow_l   = 0.0
         self.side_glow_r   = 0.0
-        self.rose_pulse    = 0.0
-        self.bass_avg      = 0.0
+        
+        # State machine for Rose Window Strobe
+        self.rose_alpha    = 0.0    # Actual rendered alpha
+        self.rose_state    = "IDLE" # IDLE, ATTACK, HOLD, RELEASE, COOLDOWN
+        self.state_timer   = 0.0    # Time spent in current state
 
         # Load & pre-process logo
         self._load_logo(logo_path)
@@ -435,17 +438,46 @@ class CathedralStormVisualizer:
         # Draw the dark base image always
         surf.blit(self.rose_window_dark, (img_x, img_y))
         
-        # --- Hard Envelope Filter for Rose Window ---
-        # 1. Trigger Pulse:
-        # - Hard Threshold Gate: Ignore anything below 85% of max possible sub-bass intensity
-        if bass > 0.85:
-            self.rose_pulse = 255.0  # Instant attack/Peak flash
-            
-        # 2. Aggressive Release (Instant strobe effect)
-        # Drop to zero in ~2-3 frames (at 60fps)
-        self.rose_pulse = max(0, self.rose_pulse - 100) 
+        # --- State-Based Timing Engine for Rose Window ---
+        dt = 1.0 / 60.0 # Delta time per frame
+        self.state_timer += dt
 
-        pulse_alpha = int(self.rose_pulse)
+        # 1. State Machine Transitions
+        if self.rose_state == "IDLE":
+            if bass > 0.85:
+                self.rose_state  = "ATTACK"
+                self.state_timer = 0.0
+        
+        elif self.rose_state == "ATTACK":
+            # Lerp towards 255 (Fast fade in)
+            self.rose_alpha = self.rose_alpha * 0.4 + 255.0 * 0.6
+            if self.rose_alpha > 250:
+                self.rose_alpha = 255.0
+                self.rose_state = "HOLD"
+                self.state_timer = 0.0
+
+        elif self.rose_state == "HOLD":
+            # Force hold for 0.2 seconds
+            if self.state_timer >= 0.2:
+                self.rose_state = "RELEASE"
+                self.state_timer = 0.0
+
+        elif self.rose_state == "RELEASE":
+            # Lerp towards 0 (Fast fade out)
+            self.rose_alpha = self.rose_alpha * 0.6 + 0.0 * 0.4
+            if self.rose_alpha < 5:
+                self.rose_alpha = 0.0
+                self.rose_state = "COOLDOWN"
+                self.state_timer = 0.0
+
+        elif self.rose_state == "COOLDOWN":
+            # Mandatory 0.4 second refractory period
+            if self.state_timer >= 0.4:
+                self.rose_state = "IDLE"
+                self.state_timer = 0.0
+
+        # --- Draw the Final Result ---
+        pulse_alpha = int(self.rose_alpha)
         if pulse_alpha > 5:
             self.rose_window_bright.set_alpha(pulse_alpha)
             surf.blit(self.rose_window_bright, (img_x, img_y))
