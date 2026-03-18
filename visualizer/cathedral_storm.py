@@ -421,19 +421,20 @@ class CathedralStormVisualizer:
         # Draw the dark base image always
         surf.blit(self.rose_window_dark, (img_x, img_y))
         
-        # Flash the bright image on heavy beats (driven by bass level)
-        # bass normally hovers 0.1 - 0.4. Scale to 0-255.
-        pulse_alpha = int(min(max(bass * 300 - 30, 0), 255))
+        # Flash the bright image strictly on heavy bass beats (Kick/Djent chug)
+        # Squaring the bass emphasizes the peaks and creates a fast, punchy decay
+        pulse_alpha = int(min((bass ** 2) * 500, 255))
         if pulse_alpha > 5:
             self.rose_window_bright.set_alpha(pulse_alpha)
             surf.blit(self.rose_window_bright, (img_x, img_y))
 
 
     def _draw_side_windows(self, surf, mid: float, treble: float):
-        """Arched gothic windows on the side transepts."""
+        """Arched gothic windows tied to snare and hi-hats."""
         cx = self.W // 2
-        self.side_glow_l = self.side_glow_l * 0.8 + mid    * 0.2
-        self.side_glow_r = self.side_glow_r * 0.8 + treble * 0.2
+        # Fast decay (0.4 multiplier) for quick flashing/strobing effect
+        self.side_glow_l = self.side_glow_l * 0.4 + mid    * 0.6  # Snare
+        self.side_glow_r = self.side_glow_r * 0.4 + treble * 0.6  # Hi-hat
 
         windows = [
             # (center_x, bottom_y, w, h, glow, colour)
