@@ -624,6 +624,27 @@ class CathedralStormVisualizer:
         surf.blit(self.fog_surf, (-self.fog_x, y_pos))
         surf.blit(self.fog_surf, (self.fog_w - self.fog_x, y_pos))
 
+    def _apply_chromatic_aberration(self, surf):
+        """
+        Subtle lens color fringing.
+        Red channel (+2, +1), Blue channel (-2, -1), Green stationary.
+        """
+        # 1. Create channel copies using full-frame masks
+        # Red channel
+        red_buf = surf.copy()
+        red_buf.fill((255, 0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        
+        # Blue channel
+        blue_buf = surf.copy()
+        blue_buf.fill((0, 0, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        
+        # 2. Convert original surf to just the Green channel
+        surf.fill((0, 255, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        
+        # 3. Recombine with offsets
+        surf.blit(red_buf,  (2, 1),   special_flags=pygame.BLEND_RGBA_ADD)
+        surf.blit(blue_buf, (-2, -1), special_flags=pygame.BLEND_RGBA_ADD)
+
     # ------------------------------------------------------------------
     # Main render frame
     # ------------------------------------------------------------------
@@ -688,6 +709,9 @@ class CathedralStormVisualizer:
         if onset > 0.85 and random.random() < 0.25:
             self._trigger_lightning()
         self._draw_flash(surf)
+
+        # Apply Chromatic Aberration as the final post-processing step
+        self._apply_chromatic_aberration(surf)
 
         # Scale full canvas down to the preview window
         if not hide_preview:
