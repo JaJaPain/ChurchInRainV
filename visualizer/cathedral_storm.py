@@ -165,10 +165,12 @@ class CathedralStormVisualizer:
         self.bolt_alpha = 0
         self.next_bolt_time = random.uniform(15, 20)
 
-        # Window glow state
+        # Window glow and pulse state
         self.window_glow   = [0.0] * 6   # 6 stained glass segments
         self.side_glow_l   = 0.0
         self.side_glow_r   = 0.0
+        self.rose_pulse    = 0.0
+        self.bass_avg      = 0.0
 
         # Load & pre-process logo
         self._load_logo(logo_path)
@@ -433,9 +435,20 @@ class CathedralStormVisualizer:
         # Draw the dark base image always
         surf.blit(self.rose_window_dark, (img_x, img_y))
         
-        # Flash the bright image strictly on heavy bass beats (Kick/Djent chug)
-        # Squaring the bass emphasizes the peaks and creates a fast, punchy decay
-        pulse_alpha = int(min((bass ** 2) * 500, 255))
+        # --- Advanced Transient Detection for Rose Window ---
+        # 1. Update moving average of bass energy
+        self.bass_avg = self.bass_avg * 0.92 + bass * 0.08
+        
+        # 2. Trigger Pulse:
+        # - Current energy must be significantly higher than the average (spike detection)
+        # - Must be above a high absolute threshold (0.6, so roughly top 15% of possible range)
+        if bass > self.bass_avg * 1.3 and bass > 0.6:
+            self.rose_pulse = 255.0  # Instant attack
+            
+        # 3. Aggressive Decay (Fast Release)
+        self.rose_pulse = max(0, self.rose_pulse - 40) # Rapid fade in ~6 frames (at 60fps)
+
+        pulse_alpha = int(self.rose_pulse)
         if pulse_alpha > 5:
             self.rose_window_bright.set_alpha(pulse_alpha)
             surf.blit(self.rose_window_bright, (img_x, img_y))
@@ -473,7 +486,7 @@ class CathedralStormVisualizer:
     def _draw_spectrum_bars(self, surf, spectrum: np.ndarray):
         """Symmetric spectrum bars resting on a black bar at the bottom with a noise gate."""
         # Noise Gate: Ignore very low-level background hiss/noise
-        NOISE_THRESHOLD = 0.05
+        NOISE_THRESHOLD = 0.08
         # Apply the gate to our spectrum array (vectorized for performance)
         spectrum = np.where(spectrum < NOISE_THRESHOLD, 0.0, spectrum)
 
