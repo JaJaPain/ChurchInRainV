@@ -394,14 +394,13 @@ class CathedralStormVisualizer:
         dt = 1.0 / 60.0 # Delta time per frame
 
         # --- Layer 1: The Blue Halo (Kinetic Strobe) ---
-        # Frequency Trigger: High-mid "clicks" (3000Hz - 5000Hz)
-        # We'll use the onset strength at this specific frequency range if possible, 
-        # or simplified: sudden spikes in high-mids.
-        high_mids = float(spectrum[30:40].mean()) # Approx 3kHz - 8kHz in our 48-band log spectrum
+        # FIX: Changed .mean() to .max() to catch the sharpest transient peak, not the average
+        high_mids = float(spectrum[30:40].max()) 
         
         self.halo_timer += dt
         if self.halo_state == "IDLE":
-            if high_mids > 0.75: # Strict high-mid threshold for the "kick click"
+            # You may need to tweak this 0.75 up or down slightly depending on the song's mix
+            if high_mids > 0.75: 
                 self.halo_state = "ATTACK"
                 self.halo_timer = 0.0
         elif self.halo_state == "ATTACK":
@@ -427,19 +426,17 @@ class CathedralStormVisualizer:
 
         if self.halo_alpha > 5:
             # Render the Blue Halo Glow
-            # Glow magnitude increases with intensity
             halo_r = int(outer_r + (self.halo_alpha / 255.0) * 80)
             halo_surf = pygame.Surface((halo_r * 2, halo_r * 2), pygame.SRCALPHA)
             for r in range(outer_r, halo_r, 4):
-                # Calculate alpha dropoff
                 a = int(self.halo_alpha * (1.0 - (r - outer_r) / (halo_r - outer_r)))
                 pygame.draw.circle(halo_surf, (*CYAN, a // 3), (halo_r, halo_r), r, 3)
             surf.blit(halo_surf, (cx - halo_r, cy - halo_r))
 
         # --- Layer 2: Main Stained Glass (Ambient Breathing) ---
-        # Map to overall RMS with slow smoothing (breathing)
-        # rms is already normalized 0.0-1.0
-        target_ambient = min(255.0, rms * 350.0) # Scale up to visible range
+        # FIX: Changed the math to account for the brickwall compression of metal.
+        # It now subtracts a floor (0.5) so it only glows on the loudest parts, and scales less aggressively.
+        target_ambient = max(0.0, min(255.0, (rms - 0.5) * 400.0)) 
         self.rose_ambient_alpha = self.rose_ambient_alpha * 0.95 + target_ambient * 0.05
         
         img_x = cx - self.rose_window_size // 2
