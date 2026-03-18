@@ -170,10 +170,13 @@ class CathedralStormVisualizer:
         self.side_glow_l   = 0.0
         self.side_glow_r   = 0.0
         
-        # State machine for Rose Window Strobe
-        self.rose_alpha    = 0.0    # Actual rendered alpha
-        self.rose_state    = "IDLE" # IDLE, ATTACK, HOLD, RELEASE, COOLDOWN
-        self.state_timer   = 0.0    # Time spent in current state
+        # 1. Main Window Ambient Breathing
+        self.rose_ambient_alpha = 0.0
+        
+        # 2. Blue Halo Kinetic Strobe State Machine
+        self.halo_alpha    = 0.0    # Actual rendered halo alpha
+        self.halo_state    = "IDLE" # IDLE, ATTACK, HOLD, RELEASE, COOLDOWN
+        self.halo_timer    = 0.0    # Time spent in current state
 
         # Load & pre-process logo
         self._load_logo(logo_path)
@@ -383,104 +386,93 @@ class CathedralStormVisualizer:
 
         surf.blit(self.light_surf, (0, 0))
 
-    def _draw_rose_window(self, surf, spectrum: np.ndarray, bass: float):
-        """Stained-glass rose window — animated colour segments behind the combined image."""
+    def _draw_rose_window(self, surf, spectrum: np.ndarray, bass: float, rms: float, frame_idx: int):
+        """Dual-layer Rose Window: Ambient breathing glass and kinetic strobe halo."""
         cx, cy  = self.W // 2, 420
         outer_r = self.rose_window_size // 2   # matches the image radius
         inner_r = 60
+        dt = 1.0 / 60.0 # Delta time per frame
 
-        # --- Animated colour segments (drawn BEHIND the image) ---
-        n_seg     = len(WINDOW_COLOURS)
-        bands     = np.array_split(spectrum, n_seg)
-        seg_angle = 360 / n_seg
+        # --- Layer 1: The Blue Halo (Kinetic Strobe) ---
+        # Frequency Trigger: High-mid "clicks" (3000Hz - 5000Hz)
+        # We'll use the onset strength at this specific frequency range if possible, 
+        # or simplified: sudden spikes in high-mids.
+        high_mids = float(spectrum[30:40].mean()) # Approx 3kHz - 8kHz in our 48-band log spectrum
+        
+        self.halo_timer += dt
+        if self.halo_state == "IDLE":
+            if high_mids > 0.75: # Strict high-mid threshold for the "kick click"
+                self.halo_state = "ATTACK"
+                self.halo_timer = 0.0
+        elif self.halo_state == "ATTACK":
+            self.halo_alpha = self.halo_alpha * 0.3 + 255.0 * 0.7 # Snap attack
+            if self.halo_alpha > 240:
+                self.halo_alpha = 255.0
+                self.halo_state = "HOLD"
+                self.halo_timer = 0.0
+        elif self.halo_state == "HOLD":
+            if self.halo_timer >= 0.08: # Very short hold for crispness
+                self.halo_state = "RELEASE"
+                self.halo_timer = 0.0
+        elif self.halo_state == "RELEASE":
+            self.halo_alpha = self.halo_alpha * 0.5 + 0.0 * 0.5 # Fast decay
+            if self.halo_alpha < 5:
+                self.halo_alpha = 0.0
+                self.halo_state = "COOLDOWN"
+                self.halo_timer = 0.0
+        elif self.halo_state == "COOLDOWN":
+            if self.halo_timer >= 0.12: # Quick refractory period
+                self.halo_state = "IDLE"
+                self.halo_timer = 0.0
 
-        for i, (band_vals, colour) in enumerate(zip(bands, WINDOW_COLOURS)):
-            energy = float(band_vals.mean())
-            self.window_glow[i] = self.window_glow[i] * 0.85 + energy * 0.15
-
-            if self.window_glow[i] < 0.02:
-                continue
-            alpha = int(self.window_glow[i] * 200)
-            col   = (*colour, alpha)
-
-            start_angle = math.radians(i * seg_angle - 90)
-            end_angle   = math.radians((i + 1) * seg_angle - 90)
-            N_pts = 20
-
-            pts = [(int(cx + inner_r * math.cos(start_angle)),
-                    int(cy + inner_r * math.sin(start_angle)))]
-            for k in range(N_pts + 1):
-                a = start_angle + (end_angle - start_angle) * k / N_pts
-                pts.append((int(cx + outer_r * math.cos(a)),
-                             int(cy + outer_r * math.sin(a))))
-            pts.append((int(cx + inner_r * math.cos(end_angle)),
-                         int(cy + inner_r * math.sin(end_angle))))
-
-            tmp = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
-            pygame.draw.polygon(tmp, col, pts)
-            surf.blit(tmp, (0, 0))
-
-        # --- Glow halo behind the window (bass-driven soft gradient) ---
-        halo_r = int(outer_r + bass * 50)
-        halo_a = int(bass * 90)
-        if halo_a > 5:
+        if self.halo_alpha > 5:
+            # Render the Blue Halo Glow
+            # Glow magnitude increases with intensity
+            halo_r = int(outer_r + (self.halo_alpha / 255.0) * 80)
             halo_surf = pygame.Surface((halo_r * 2, halo_r * 2), pygame.SRCALPHA)
-            # Draw concentric circles fading out to create soft edge
-            for r in range(outer_r, halo_r, 3):
-                a = int(halo_a * (1.0 - (r - outer_r) / (halo_r - outer_r)))
-                pygame.draw.circle(halo_surf, (*CYAN, a), (halo_r, halo_r), r, 4)
+            for r in range(outer_r, halo_r, 4):
+                # Calculate alpha dropoff
+                a = int(self.halo_alpha * (1.0 - (r - outer_r) / (halo_r - outer_r)))
+                pygame.draw.circle(halo_surf, (*CYAN, a // 3), (halo_r, halo_r), r, 3)
             surf.blit(halo_surf, (cx - halo_r, cy - halo_r))
 
-        # --- Combined rose window + cross image on top ---
+        # --- Layer 2: Main Stained Glass (Ambient Breathing) ---
+        # Map to overall RMS with slow smoothing (breathing)
+        # rms is already normalized 0.0-1.0
+        target_ambient = min(255.0, rms * 350.0) # Scale up to visible range
+        self.rose_ambient_alpha = self.rose_ambient_alpha * 0.95 + target_ambient * 0.05
+        
         img_x = cx - self.rose_window_size // 2
         img_y = cy - self.rose_window_size // 2
         
-        # Draw the dark base image always
+        # Always draw the dark base
         surf.blit(self.rose_window_dark, (img_x, img_y))
         
-        # --- State-Based Timing Engine for Rose Window ---
-        dt = 1.0 / 60.0 # Delta time per frame
-        self.state_timer += dt
-
-        # 1. State Machine Transitions
-        if self.rose_state == "IDLE":
-            if bass > 0.85:
-                self.rose_state  = "ATTACK"
-                self.state_timer = 0.0
-        
-        elif self.rose_state == "ATTACK":
-            # Lerp towards 255 (Fast fade in)
-            self.rose_alpha = self.rose_alpha * 0.4 + 255.0 * 0.6
-            if self.rose_alpha > 250:
-                self.rose_alpha = 255.0
-                self.rose_state = "HOLD"
-                self.state_timer = 0.0
-
-        elif self.rose_state == "HOLD":
-            # Force hold for 0.2 seconds
-            if self.state_timer >= 0.2:
-                self.rose_state = "RELEASE"
-                self.state_timer = 0.0
-
-        elif self.rose_state == "RELEASE":
-            # Lerp towards 0 (Fast fade out)
-            self.rose_alpha = self.rose_alpha * 0.6 + 0.0 * 0.4
-            if self.rose_alpha < 5:
-                self.rose_alpha = 0.0
-                self.rose_state = "COOLDOWN"
-                self.state_timer = 0.0
-
-        elif self.rose_state == "COOLDOWN":
-            # Mandatory 0.4 second refractory period
-            if self.state_timer >= 0.4:
-                self.rose_state = "IDLE"
-                self.state_timer = 0.0
-
-        # --- Draw the Final Result ---
-        pulse_alpha = int(self.rose_alpha)
-        if pulse_alpha > 5:
-            self.rose_window_bright.set_alpha(pulse_alpha)
+        # Blit the breathing "lit" layer
+        if self.rose_ambient_alpha > 5:
+            self.rose_window_bright.set_alpha(int(self.rose_ambient_alpha))
             surf.blit(self.rose_window_bright, (img_x, img_y))
+
+        # --- Animated Color Segments (Subtle background flicker) ---
+        n_seg     = len(WINDOW_COLOURS)
+        bands     = np.array_split(spectrum, n_seg)
+        seg_angle = 360 / n_seg
+        for i, (band_vals, colour) in enumerate(zip(bands, WINDOW_COLOURS)):
+            energy = float(band_vals.mean())
+            self.window_glow[i] = self.window_glow[i] * 0.9 + energy * 0.1
+            if self.window_glow[i] < 0.02: continue
+            alpha = int(self.window_glow[i] * 40) # Keep segments subtle now
+            col   = (*colour, alpha)
+            start_angle = math.radians(i * seg_angle - 90)
+            end_angle   = math.radians((i + 1) * seg_angle - 90)
+            pts = [(int(cx + inner_r * math.cos(start_angle)), int(cy + inner_r * math.sin(start_angle)))]
+            for k in range(11):
+                a = start_angle + (end_angle - start_angle) * k / 10
+                pts.append((int(cx + outer_r * math.cos(a)), int(cy + outer_r * math.sin(a))))
+            pts.append((int(cx + inner_r * math.cos(end_angle)), int(cy + inner_r * math.sin(end_angle))))
+            tmp = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
+            pygame.draw.polygon(tmp, col, pts)
+            surf.blit(tmp, (0, 0))
 
 
     def _draw_side_windows(self, surf, mid: float, treble: float):
@@ -718,8 +710,8 @@ class CathedralStormVisualizer:
         # --- 4a. Fog (mask bottom edge of silhouette and puddles) ---
         self._draw_fog(surf, rms)
 
-        # --- 5. Rose window ---
-        self._draw_rose_window(surf, spectrum, bass)
+        # --- 5. Rose window (Ambient Breathe + Kinetic Halo) ---
+        self._draw_rose_window(surf, spectrum, bass, rms, frame_idx)
 
         # --- 6. Side windows ---
         self._draw_side_windows(surf, mid, treble)
