@@ -177,6 +177,10 @@ class CathedralStormVisualizer:
         self.halo_alpha    = 0.0    # Actual rendered halo alpha
         self.halo_state    = "IDLE" # IDLE, ATTACK, HOLD, RELEASE, COOLDOWN
         self.halo_timer    = 0.0    # Time spent in current state
+        
+        # 3. Macro Song State Tracker
+        self.smoothed_rms  = 0.0
+        self.song_state    = "QUIET" # QUIET or HEAVY
 
         # Load & pre-process logo
         self._load_logo(logo_path)
@@ -393,14 +397,32 @@ class CathedralStormVisualizer:
         inner_r = 60
         dt = 1.0 / 60.0 # Delta time per frame
 
-        # --- Layer 1: The Blue Halo (Kinetic Strobe) ---
-        # FIX: Changed .mean() to .max() to catch the sharpest transient peak, not the average
+        # --- Macro 'Song State' Engine ---
+        # Smooth the global RMS to determine if the song is currently loud or quiet
+        self.smoothed_rms = self.smoothed_rms * 0.95 + rms * 0.05
+        
+        # Gap between thresholds prevents rapid flickering between states
+        if self.smoothed_rms > 0.75:
+            self.song_state = "HEAVY"
+        elif self.smoothed_rms < 0.65:
+            self.song_state = "QUIET"
+            
+        # Determine strict dynamic rules based on current context
+        if self.song_state == "HEAVY":
+            strobe_threshold = 0.90 # Dense mix requires a much sharper peak to trigger
+            halo_color = (255, 0, 150) # Aggressive hot Magenta/Pink for heavy sections
+        else:
+            strobe_threshold = 0.65 # Sparser mix allows lower peaks to trigger
+            halo_color = CYAN
+        
+        # --- Layer 1: The Halo (Kinetic Strobe) ---
+        # Frequency Trigger: High-mid "clicks" (3000Hz - 5000Hz)
         high_mids = float(spectrum[30:40].max()) 
         
         self.halo_timer += dt
         if self.halo_state == "IDLE":
-            # You may need to tweak this 0.75 up or down slightly depending on the song's mix
-            if high_mids > 0.75: 
+            # Apply our dynamically calculated context-aware threshold
+            if high_mids > strobe_threshold: 
                 self.halo_state = "ATTACK"
                 self.halo_timer = 0.0
         elif self.halo_state == "ATTACK":
@@ -425,12 +447,12 @@ class CathedralStormVisualizer:
                 self.halo_timer = 0.0
 
         if self.halo_alpha > 5:
-            # Render the Blue Halo Glow
+            # Render the Halo Glow using context color
             halo_r = int(outer_r + (self.halo_alpha / 255.0) * 80)
             halo_surf = pygame.Surface((halo_r * 2, halo_r * 2), pygame.SRCALPHA)
             for r in range(outer_r, halo_r, 4):
                 a = int(self.halo_alpha * (1.0 - (r - outer_r) / (halo_r - outer_r)))
-                pygame.draw.circle(halo_surf, (*CYAN, a // 3), (halo_r, halo_r), r, 3)
+                pygame.draw.circle(halo_surf, (*halo_color, a // 3), (halo_r, halo_r), r, 3)
             surf.blit(halo_surf, (cx - halo_r, cy - halo_r))
 
         # --- Layer 2: Main Stained Glass (Ambient Breathing) ---
