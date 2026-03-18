@@ -435,18 +435,15 @@ class CathedralStormVisualizer:
         # Draw the dark base image always
         surf.blit(self.rose_window_dark, (img_x, img_y))
         
-        # --- Advanced Transient Detection for Rose Window ---
-        # 1. Update moving average of bass energy
-        self.bass_avg = self.bass_avg * 0.92 + bass * 0.08
-        
-        # 2. Trigger Pulse:
-        # - Current energy must be significantly higher than the average (spike detection)
-        # - Must be above a high absolute threshold (0.6, so roughly top 15% of possible range)
-        if bass > self.bass_avg * 1.3 and bass > 0.6:
-            self.rose_pulse = 255.0  # Instant attack
+        # --- Hard Envelope Filter for Rose Window ---
+        # 1. Trigger Pulse:
+        # - Hard Threshold Gate: Ignore anything below 85% of max possible sub-bass intensity
+        if bass > 0.85:
+            self.rose_pulse = 255.0  # Instant attack/Peak flash
             
-        # 3. Aggressive Decay (Fast Release)
-        self.rose_pulse = max(0, self.rose_pulse - 40) # Rapid fade in ~6 frames (at 60fps)
+        # 2. Aggressive Release (Instant strobe effect)
+        # Drop to zero in ~2-3 frames (at 60fps)
+        self.rose_pulse = max(0, self.rose_pulse - 100) 
 
         pulse_alpha = int(self.rose_pulse)
         if pulse_alpha > 5:
